@@ -1,0 +1,9 @@
+pyproject.toml
+src/pokecrawler/__init__.py
+src/pokecrawler.egg-info/PKG-INFO
+src/pokecrawler.egg-info/SOURCES.txt
+src/pokecrawler.egg-info/dependency_links.txt
+src/pokecrawler.egg-info/requires.txt
+src/pokecrawler.egg-info/top_level.txt
+src/pokecrawler/models/__init__.py
+src/pokecrawler/models/pokemon.py
