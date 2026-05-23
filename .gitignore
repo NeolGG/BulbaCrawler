@@ -1,0 +1,25 @@
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Build / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Crawler output (generated at runtime)
+output/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDEs
+.cursor/
+.vscode/
+.idea/
