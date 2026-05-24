@@ -1,6 +1,6 @@
 from typing import Any
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from pokecrawler.config.selectors import POKEMON_SPEC, Spec
 from pokecrawler.config.taxonomy import STAT_LABELS
@@ -41,28 +41,47 @@ def run_spec(soup: BeautifulSoup, spec: Spec = POKEMON_SPEC) -> dict[str, Any]:
     return result
 
 
+def _find_stats_table(headline: Tag) -> Tag | None:
+    for table in headline.find_all_next("table"):
+        if not isinstance(table, Tag):
+            continue
+        for row in table.find_all("tr"):
+            th = row.find("th")
+            if not isinstance(th, Tag):
+                continue
+            divs = th.find_all("div", recursive=False)
+            if len(divs) >= 2 and divs[0].find("a"):
+                return table
+    return None
+
+
 def parse_stats(soup: BeautifulSoup) -> dict[str, str]:
-    infobox = soup.find("table", {"class": "infobox"})
-    if not infobox:
+    headline = soup.find("span", {"id": "Base_stats"})
+    if not isinstance(headline, Tag):
+        return {}
+
+    table = _find_stats_table(headline)
+    if table is None:
         return {}
 
     stats: dict[str, str] = {}
-
-    for row in infobox.find_all("tr"):
-        for td in row.find_all("td", class_="roundy"):
-            small = td.find("small")
-            if not small:
-                continue
-
-            label = small.get_text(strip=True)
-            canonical = STAT_LABELS.get(label)
-            if not canonical:
-                continue
-
-            raw_value = td.find(string=True, recursive=False)
-            if raw_value and raw_value.strip().isdigit():
-                stats[canonical] = raw_value.strip()
-
+    for row in table.find_all("tr"):
+        th = row.find("th")
+        if not isinstance(th, Tag):
+            continue
+        divs = th.find_all("div", recursive=False)
+        if len(divs) < 2:
+            continue
+        link = divs[0].find("a")
+        if not isinstance(link, Tag):
+            continue
+        stat_name = link.get_text(strip=True)
+        canonical = STAT_LABELS.get(stat_name)
+        if not canonical:
+            continue
+        value = divs[1].get_text(strip=True)
+        if value.isdigit():
+            stats[canonical] = value
     return stats
 
 
