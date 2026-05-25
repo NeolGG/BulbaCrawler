@@ -11,7 +11,7 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def store_image(
+async def store_image(
     image_url: str,
     national_number: int,
     name: str,
@@ -25,7 +25,8 @@ def store_image(
     dest = output_dir / f"{national_number:04d}_{slug}{ext}"
 
     try:
-        resp = get_session().get(image_url, timeout=30)
+        session = await get_session()
+        resp = await session.get(image_url, timeout=30)
         resp.raise_for_status()
         dest.write_bytes(resp.content)
     except Exception as exc:

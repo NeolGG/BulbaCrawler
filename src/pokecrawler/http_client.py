@@ -1,6 +1,7 @@
+import asyncio
 import time
 
-from curl_cffi.requests import Session
+from curl_cffi.requests import AsyncSession
 from DrissionPage import ChromiumPage, ChromiumOptions
 
 from pokecrawler.exceptions import FetchError
@@ -18,8 +19,8 @@ _WARMUP_URLS = [
     f"{_ARCHIVES_URL}/media/upload/thumb/f/fb/0001Bulbasaur.png/250px-0001Bulbasaur.png",
 ]
 
-_SESSION: Session | None = None
-_USER_AGENT: str = ""
+_SESSION: AsyncSession | None = None
+_SESSION_LOCK = asyncio.Lock()
 
 
 def _is_challenge(text: str) -> bool:
@@ -27,23 +28,25 @@ def _is_challenge(text: str) -> bool:
     return "cloudflare" in snippet and ("momento" in snippet or "just a moment" in snippet)
 
 
-def _harvest_cookies() -> None:
-    global _SESSION, _USER_AGENT
-
+def _collect_cookies_sync() -> tuple[list[dict], str]:
     page = ChromiumPage(addr_or_opts=ChromiumOptions())
     try:
         for url in _WARMUP_URLS:
             page.get(url)
-            time.sleep(_CHALLENGE_WAIT)  # wait for Turnstile to auto-resolve
-
-        all_cookies = page.cookies()
-        _USER_AGENT = page.run_js("return navigator.userAgent")
+            time.sleep(_CHALLENGE_WAIT)
+        cookies = list(page.cookies())
+        user_agent: str = page.run_js("return navigator.userAgent")
     finally:
         page.quit()
+    return cookies, user_agent
 
-    session = Session(impersonate="chrome")
-    session.headers["User-Agent"] = _USER_AGENT
-    for c in all_cookies:
+
+async def _harvest_cookies() -> None:
+    global _SESSION
+    cookies, user_agent = await asyncio.to_thread(_collect_cookies_sync)
+    session = AsyncSession(impersonate="chrome")
+    session.headers["User-Agent"] = user_agent
+    for c in cookies:
         session.cookies.set(
             c["name"],
             c["value"],
@@ -53,25 +56,29 @@ def _harvest_cookies() -> None:
     _SESSION = session
 
 
-def get_session() -> Session:
+async def get_session() -> AsyncSession:
+    """Return the shared AsyncSession, harvesting cookies first if needed."""
     if _SESSION is None:
-        _harvest_cookies()
+        async with _SESSION_LOCK:
+            if _SESSION is None:
+                await _harvest_cookies()
     assert _SESSION is not None
     return _SESSION
 
 
-def fetch(url: str) -> str:
-    session = get_session()
+async def fetch(url: str) -> str:
+    session = await get_session()
     last_exc: Exception | None = None
 
     for attempt in range(1, _RETRIES + 1):
         try:
-            resp = session.get(url, timeout=_TIMEOUT)
+            resp = await session.get(url, timeout=_TIMEOUT)
 
             if _is_challenge(resp.text) or resp.status_code in {403, 503}:
                 if attempt < _RETRIES:
-                    _harvest_cookies()
-                    session = get_session()
+                    async with _SESSION_LOCK:
+                        await _harvest_cookies()
+                    session = await get_session()
                     continue
                 raise Exception(f"Cloudflare challenge not resolved after {_RETRIES} attempts")
 
@@ -83,6 +90,6 @@ def fetch(url: str) -> str:
         except Exception as exc:
             last_exc = exc
             if attempt < _RETRIES:
-                time.sleep(_BACKOFF * attempt)
+                await asyncio.sleep(_BACKOFF * attempt)
 
     raise FetchError(url, last_exc) from last_exc
