@@ -1,7 +1,7 @@
 from typing import Any
 
 from pokecrawler.exceptions import NormalizationError
-from pokecrawler.models.pokemon import Evolution, Pokemon, Stats
+from pokecrawler.models.pokemon import Ability, Evolution, Pokemon, Stats
 from pokecrawler.normalizer.primitives import clean_str, to_int, to_list
 
 _POKEMON_SUFFIX = " (Pokémon)"
@@ -32,6 +32,20 @@ def _normalize_stats(raw: Any) -> Stats:
     )
 
 
+def _normalize_abilities(raw: Any) -> list[Ability]:
+    if not isinstance(raw, list):
+        return []
+    result: list[Ability] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = clean_str(item.get("name"))
+        if not name:
+            continue
+        result.append(Ability(name=name, is_hidden=bool(item.get("is_hidden", False))))
+    return result
+
+
 def _normalize_evolution(raw: Any) -> Evolution:
     data: dict[str, Any] = raw if isinstance(raw, dict) else {}
     return Evolution(
@@ -47,6 +61,7 @@ def to_pokemon(raw: dict[str, Any]) -> Pokemon:
         category=clean_str(raw.get("category")) or "",
         types=list(dict.fromkeys(to_list(raw.get("types"), drop=("Unknown",)))),
         stats=_normalize_stats(raw.get("stats")),
+        abilities=_normalize_abilities(raw.get("abilities")),
         evolution=_normalize_evolution(raw.get("evolution")),
         image_local=None,  # set later by image_store
     )

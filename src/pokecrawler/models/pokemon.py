@@ -12,6 +12,11 @@ class Stats(BaseModel):
     speed: int = Field(ge=0)
 
 
+class Ability(BaseModel):
+    name: str
+    is_hidden: bool = False
+
+
 class Evolution(BaseModel):
     predecessors: list[str] = Field(default_factory=list)
     successors: list[str] = Field(default_factory=list)
@@ -23,5 +28,6 @@ class Pokemon(BaseModel):
     category: str
     types: list[str] = Field(min_length=1)
     stats: Stats
+    abilities: list[Ability] = Field(default_factory=list)
     evolution: Evolution
     image_local: Path | None = None

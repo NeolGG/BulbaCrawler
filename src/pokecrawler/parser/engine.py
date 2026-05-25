@@ -85,8 +85,49 @@ def parse_stats(soup: BeautifulSoup) -> dict[str, str]:
     return stats
 
 
+def parse_abilities(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    infobox = soup.find("table", {"class": "infobox"})
+    if not isinstance(infobox, Tag):
+        return []
+
+    abilities_container: Tag | None = None
+    for td in infobox.find_all("td", class_="roundy"):
+        if not isinstance(td, Tag):
+            continue
+        if td.find("a", title="Ability"):
+            abilities_container = td
+            break
+
+    if abilities_container is None:
+        return []
+
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+
+    for cell in abilities_container.find_all("td"):
+        if not isinstance(cell, Tag):
+            continue
+        small = cell.find("small")
+        is_hidden = (
+            isinstance(small, Tag)
+            and "hidden ability" in small.get_text(strip=True).lower()
+        )
+        for link in cell.find_all("a", title=lambda t: isinstance(t, str) and "(Ability)" in t):
+            raw_title = link.get("title")
+            if not isinstance(raw_title, str):
+                continue
+            name = raw_title.replace(" (Ability)", "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            result.append({"name": name, "is_hidden": is_hidden})
+
+    return result
+
+
 def parse_page(soup: BeautifulSoup) -> dict[str, Any]:
     data = run_spec(soup)
     data["stats"] = parse_stats(soup)
+    data["abilities"] = parse_abilities(soup)
     data["evolution"] = extract_evolution_chain(soup, data.get("name") or "")
     return data
