@@ -29,7 +29,6 @@ CREATE TABLE IF NOT EXISTS pokemon (
 
 
 def init_db(path: Path = _OUTPUT_DB) -> sqlite3.Connection:
-    """Create the pokemon table if it doesn't exist and return the open connection."""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.executescript(_DDL)
@@ -38,7 +37,6 @@ def init_db(path: Path = _OUTPUT_DB) -> sqlite3.Connection:
 
 
 def upsert_pokemon(conn: sqlite3.Connection, pokemon: Pokemon) -> None:
-    """Insert or update a Pokémon row, preserving its id on re-crawls."""
     conn.execute(
         """
         INSERT INTO pokemon
