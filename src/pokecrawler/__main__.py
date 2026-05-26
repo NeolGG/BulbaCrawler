@@ -1,0 +1,52 @@
+import asyncio
+import logging
+import time
+from pathlib import Path
+
+from pokecrawler.cli import build_parser
+from pokecrawler.crawler import FIRST_POKEMON_URL, crawl
+from pokecrawler.database import init_db
+
+
+def _setup_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
+async def _main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    _setup_logging()
+
+    output = Path(args.output)
+    start_url = args.start_url or FIRST_POKEMON_URL
+
+    conn = init_db(output / "pokedex.db")
+
+    start = time.perf_counter()
+    pokemons = await crawl(
+        start_url,
+        conn,
+        limit=args.limit,
+        json_path=output / "pokemons.json",
+        image_dir=output / "images",
+        skip_images=args.no_images,
+    )
+    elapsed = time.perf_counter() - start
+    conn.close()
+
+    count = len(pokemons)
+    per_pokemon = elapsed / count if count else 0
+    print(f"\nCrawled {count} Pokémon in {elapsed:.1f}s ({per_pokemon:.2f}s/Pokémon).")
+
+
+def main() -> None:
+    asyncio.run(_main())
+
+
+if __name__ == "__main__":
+    main()
