@@ -1,0 +1,5 @@
+services:
+  pokecrawler:
+    build: .
+    volumes:
+      - ./output:/app/output

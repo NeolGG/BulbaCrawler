@@ -6,6 +6,7 @@ from pathlib import Path
 from pokecrawler.cli import build_parser
 from pokecrawler.crawler import FIRST_POKEMON_URL, crawl
 from pokecrawler.database import init_db
+from pokecrawler.http_client import get_client
 
 
 def _setup_logging() -> None:
@@ -38,7 +39,10 @@ async def _main() -> None:
         skip_images=args.no_images,
     )
     elapsed = time.perf_counter() - start
+
     conn.close()
+    client = await get_client()
+    await client.aclose()
 
     count = len(pokemons)
     per_pokemon = elapsed / count if count else 0

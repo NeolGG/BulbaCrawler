@@ -71,9 +71,7 @@ def upsert_pokemon(conn: sqlite3.Connection, pokemon: Pokemon) -> None:
             pokemon.stats.sp_def,
             pokemon.stats.speed,
             json.dumps(pokemon.types, ensure_ascii=False),
-            json.dumps(
-                [a.model_dump() for a in pokemon.abilities], ensure_ascii=False
-            ),
+            json.dumps([a.model_dump() for a in pokemon.abilities], ensure_ascii=False),
             json.dumps(pokemon.evolution.model_dump(), ensure_ascii=False),
         ),
     )

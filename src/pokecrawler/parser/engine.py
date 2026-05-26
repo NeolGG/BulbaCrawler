@@ -112,7 +112,9 @@ def parse_abilities(soup: BeautifulSoup) -> list[dict[str, Any]]:
             isinstance(small, Tag)
             and "hidden ability" in small.get_text(strip=True).lower()
         )
-        for link in cell.find_all("a", title=lambda t: isinstance(t, str) and "(Ability)" in t):
+        for link in cell.find_all(
+            "a", title=lambda t: isinstance(t, str) and "(Ability)" in t
+        ):
             raw_title = link.get("title")
             if not isinstance(raw_title, str):
                 continue

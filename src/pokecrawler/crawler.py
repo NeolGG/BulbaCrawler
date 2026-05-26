@@ -96,7 +96,9 @@ async def crawl(
 
     results = await asyncio.gather(
         *[
-            _process_one(url, html, conn, sem, image_dir=image_dir, skip_images=skip_images)
+            _process_one(
+                url, html, conn, sem, image_dir=image_dir, skip_images=skip_images
+            )
             for url, html in pages
         ]
     )

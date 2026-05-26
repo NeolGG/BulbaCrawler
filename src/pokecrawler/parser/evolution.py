@@ -23,9 +23,10 @@ def _find_evolution_container(soup: BeautifulSoup) -> Tag | None:
         if tag.name in ("h2", "h3"):
             break
         has_sprite = tag.find("img") is not None
-        has_link = tag.find(
-            "a", title=lambda t: isinstance(t, str) and "(Pokémon)" in t
-        ) is not None
+        has_link = (
+            tag.find("a", title=lambda t: isinstance(t, str) and "(Pokémon)" in t)
+            is not None
+        )
         if has_sprite and has_link:
             return tag
 
@@ -84,7 +85,9 @@ def extract_evolution_chain(
             seen.add(key)
             entries.append(entry)
 
-    pivot = next((i for i, (_, is_current, _) in enumerate(entries) if is_current), None)
+    pivot = next(
+        (i for i, (_, is_current, _) in enumerate(entries) if is_current), None
+    )
 
     if pivot is None:
         return {
@@ -104,7 +107,7 @@ def extract_evolution_chain(
             else:
                 successors.append(name)
 
-    for name, _, _ in entries[pivot + 1:]:
+    for name, _, _ in entries[pivot + 1 :]:
         if name:
             successors.append(name)
 

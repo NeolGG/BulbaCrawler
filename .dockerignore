@@ -1,0 +1,9 @@
+.git
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+output/
+run_test.py
+html_*.py
+tests/

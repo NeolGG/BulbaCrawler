@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from pokecrawler.exceptions import FetchError
-from pokecrawler.http_client import get_session
+from pokecrawler.http_client import get_client
 
 _OUTPUT_DIR = Path("output/images")
 
@@ -25,8 +25,8 @@ async def store_image(
     dest = output_dir / f"{national_number:04d}_{slug}{ext}"
 
     try:
-        session = await get_session()
-        resp = await session.get(image_url, timeout=30)
+        client = await get_client()
+        resp = await client.get(image_url)
         resp.raise_for_status()
         dest.write_bytes(resp.content)
     except Exception as exc:
