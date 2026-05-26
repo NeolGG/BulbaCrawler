@@ -32,6 +32,7 @@ async def _main() -> None:
         start_url,
         conn,
         limit=args.limit,
+        concurrency=args.concurrency,
         json_path=output / "pokemons.json",
         image_dir=output / "images",
         skip_images=args.no_images,

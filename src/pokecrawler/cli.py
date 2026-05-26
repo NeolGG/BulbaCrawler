@@ -30,4 +30,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip image downloads.",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Number of Pokémon to process concurrently in phase 2 (default: 5).",
+    )
     return parser

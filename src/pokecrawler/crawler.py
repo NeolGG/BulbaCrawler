@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sqlite3
 from pathlib import Path
@@ -20,45 +21,28 @@ logger = logging.getLogger(__name__)
 FIRST_POKEMON_URL = f"{BASE_URL}/wiki/Bulbasaur_(Pok%C3%A9mon)"
 
 
-async def crawl(
-    start_url: str,
+async def _process_one(
+    url: str,
+    html: str,
     conn: sqlite3.Connection,
+    sem: asyncio.Semaphore,
     *,
-    limit: int | None = None,
-    json_path: Path = Path("output/pokemons.json"),
-    image_dir: Path = Path("output/images"),
-) -> list[Pokemon]:
-    pokemons: list[Pokemon] = []
-    url: str | None = start_url
-    count = 0
-
-    while url is not None:
-        if limit is not None and count >= limit:
-            break
-
-        logger.info("[%d] fetching %s", count + 1, url)
-
-        try:
-            html = await fetch(url)
-        except FetchError as exc:
-            logger.error("fetch failed, stopping crawl: %s", exc)
-            break
-
+    image_dir: Path,
+    skip_images: bool,
+) -> Pokemon | None:
+    async with sem:
         soup = BeautifulSoup(html, "html.parser")
         clean(soup)
-
-        next_url = next_pokemon_url(soup)
 
         try:
             raw = parse_page(soup)
             pokemon = to_pokemon(raw)
         except NormalizationError as exc:
             logger.error("normalization failed for %s, skipping: %s", url, exc)
-            url = next_url
-            continue
+            return None
 
         image_url = raw.get("image_url")
-        if isinstance(image_url, str):
+        if not skip_images and isinstance(image_url, str):
             try:
                 path = await store_image(
                     image_url,
@@ -71,14 +55,56 @@ async def crawl(
                 logger.warning("image download failed for %s: %s", pokemon.name, exc)
 
         upsert_pokemon(conn, pokemon)
-        pokemons.append(pokemon)
-        count += 1
+        logger.info("saved %s (#%03d)", pokemon.name, pokemon.national_number)
+        return pokemon
 
-        logger.info(
-            "saved %s (#%03d) — %d total", pokemon.name, pokemon.national_number, count
-        )
 
+async def crawl(
+    start_url: str,
+    conn: sqlite3.Connection,
+    *,
+    limit: int | None = None,
+    concurrency: int = 5,
+    json_path: Path = Path("output/pokemons.json"),
+    image_dir: Path = Path("output/images"),
+    skip_images: bool = False,
+) -> list[Pokemon]:
+    logger.info("phase 1: collecting pages (sequential)...")
+    pages: list[tuple[str, str]] = []
+    url: str | None = start_url
+
+    while url is not None:
+        if limit is not None and len(pages) >= limit:
+            break
+
+        logger.info("[%d] fetching %s", len(pages) + 1, url)
+        try:
+            html = await fetch(url)
+        except FetchError as exc:
+            logger.error("fetch failed, stopping crawl: %s", exc)
+            break
+
+        soup = BeautifulSoup(html, "html.parser")
+        next_url = next_pokemon_url(soup)
+        pages.append((url, html))
         url = next_url
+
+    logger.info("phase 1 complete — %d pages buffered", len(pages))
+
+    logger.info("phase 2: processing concurrently (concurrency=%d)...", concurrency)
+    sem = asyncio.Semaphore(concurrency)
+
+    results = await asyncio.gather(
+        *[
+            _process_one(url, html, conn, sem, image_dir=image_dir, skip_images=skip_images)
+            for url, html in pages
+        ]
+    )
+
+    pokemons = sorted(
+        [p for p in results if p is not None],
+        key=lambda p: p.national_number,
+    )
 
     write_json(pokemons, json_path)
     logger.info("crawl complete — %d Pokémon saved", len(pokemons))
