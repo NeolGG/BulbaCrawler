@@ -37,4 +37,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="Number of Pokémon to process concurrently in phase 2 (default: 5).",
     )
+    parser.add_argument(
+        "--pokemon",
+        nargs="+",
+        metavar="NAME",
+        help=(
+            "Crawl specific Pokémon by name (skips pagination). "
+            "Example: --pokemon Bulbasaur Eevee. "
+            "When provided, --start-url and --limit are ignored."
+        ),
+    )
     return parser

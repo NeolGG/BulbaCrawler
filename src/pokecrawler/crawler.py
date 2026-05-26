@@ -15,6 +15,7 @@ from pokecrawler.normalizer import to_pokemon
 from pokecrawler.pagination import next_pokemon_url
 from pokecrawler.parser.engine import parse_page
 from pokecrawler.sanitizer.html_cleaner import clean
+from pokecrawler.urls import build_pokemon_url
 
 logger = logging.getLogger(__name__)
 
@@ -59,17 +60,9 @@ async def _process_one(
         return pokemon
 
 
-async def crawl(
-    start_url: str,
-    conn: sqlite3.Connection,
-    *,
-    limit: int | None = None,
-    concurrency: int = 5,
-    json_path: Path = Path("output/pokemons.json"),
-    image_dir: Path = Path("output/images"),
-    skip_images: bool = False,
-) -> list[Pokemon]:
-    logger.info("phase 1: collecting pages (sequential)...")
+async def _collect_via_pagination(
+    start_url: str, limit: int | None
+) -> list[tuple[str, str]]:
     pages: list[tuple[str, str]] = []
     url: str | None = start_url
 
@@ -89,6 +82,49 @@ async def crawl(
         pages.append((url, html))
         url = next_url
 
+    return pages
+
+
+async def _collect_from_names(
+    names: list[str], concurrency: int
+) -> list[tuple[str, str]]:
+    sem = asyncio.Semaphore(concurrency)
+
+    async def fetch_one(name: str) -> tuple[str, str] | None:
+        url = build_pokemon_url(name)
+        async with sem:
+            logger.info("fetching %s", url)
+            try:
+                html = await fetch(url)
+            except FetchError as exc:
+                logger.error("skipping %s: %s", name, exc)
+                return None
+            return (url, html)
+
+    results = await asyncio.gather(*[fetch_one(n) for n in names])
+    return [r for r in results if r is not None]
+
+
+async def crawl(
+    conn: sqlite3.Connection,
+    *,
+    start_url: str | None = None,
+    pokemons: list[str] | None = None,
+    limit: int | None = None,
+    concurrency: int = 5,
+    json_path: Path = Path("output/pokemons.json"),
+    image_dir: Path = Path("output/images"),
+    skip_images: bool = False,
+) -> list[Pokemon]:
+    if pokemons:
+        logger.info(
+            "phase 1: fetching %d Pokémon by name (concurrent)...", len(pokemons)
+        )
+        pages = await _collect_from_names(pokemons, concurrency)
+    else:
+        logger.info("phase 1: collecting pages via pagination (sequential)...")
+        pages = await _collect_via_pagination(start_url or FIRST_POKEMON_URL, limit)
+
     logger.info("phase 1 complete — %d pages buffered", len(pages))
 
     logger.info("phase 2: processing concurrently (concurrency=%d)...", concurrency)
@@ -103,11 +139,11 @@ async def crawl(
         ]
     )
 
-    pokemons = sorted(
+    pokemons_result = sorted(
         [p for p in results if p is not None],
         key=lambda p: p.national_number,
     )
 
-    write_json(pokemons, json_path)
-    logger.info("crawl complete — %d Pokémon saved", len(pokemons))
-    return pokemons
+    write_json(pokemons_result, json_path)
+    logger.info("crawl complete — %d Pokémon saved", len(pokemons_result))
+    return pokemons_result

@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from pokecrawler.cli import build_parser
-from pokecrawler.crawler import FIRST_POKEMON_URL, crawl
+from pokecrawler.crawler import crawl
 from pokecrawler.database import init_db
 from pokecrawler.http_client import get_client
 
@@ -24,14 +24,14 @@ async def _main() -> None:
     _setup_logging()
 
     output = Path(args.output)
-    start_url = args.start_url or FIRST_POKEMON_URL
 
     conn = init_db(output / "pokedex.db")
 
     start = time.perf_counter()
     pokemons = await crawl(
-        start_url,
         conn,
+        start_url=args.start_url,
+        pokemons=args.pokemon,
         limit=args.limit,
         concurrency=args.concurrency,
         json_path=output / "pokemons.json",
