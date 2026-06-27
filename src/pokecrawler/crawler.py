@@ -16,12 +16,16 @@ from pokecrawler.normalizer import to_pokemon
 from pokecrawler.pagination import next_pokemon_url
 from pokecrawler.parser.engine import parse_page
 from pokecrawler.sanitizer.html_cleaner import clean
-from pokecrawler.urls import build_pokemon_url
+from pokecrawler.urls import build_pokemon_url, build_trainer_url
 
 logger = logging.getLogger(__name__)
 
 FIRST_POKEMON_URL = f"{BASE_URL}/wiki/Bulbasaur_(Pok%C3%A9mon)"
 FIRST_PAGE = f"{BASE_URL}/wiki/Category:Pok%C3%A9mon"
+BUILD_DICT = {
+    "pokemon" : build_pokemon_url,
+    "trainer" : build_trainer_url
+}
 
 async def _process_one(
     url: str,
@@ -81,12 +85,16 @@ async def _collect_via_pagination(
     return ret
 
 async def _collect_from_names(
-    names: list[str], concurrency: int
+    names: list[str], 
+    concurrency: int,
+    object_type: str = "pokemon"
 ) -> list[tuple[str, str]]:
     sem = asyncio.Semaphore(concurrency)
+    
+    if object_type not in BUILD_DICT: return []
 
     async def fetch_one(name: str) -> tuple[str, str] | None:
-        url = build_pokemon_url(name)
+        url = BUILD_DICT[object_type](name)
         async with sem:
             logger.info("fetching %s", url)
             try:
@@ -132,24 +140,28 @@ async def crawl(
     conn: sqlite3.Connection,
     *,
     start_url: str | None = None, # todo: implement
-    pokemons: list[str] | None = None,
+    object_list: list[str] | None = None,
     limit: int | None = None, # todo: implement?
     concurrency: int = 5,
     json_path: Path = Path("output/pokemons.json"),
     image_dir: Path = Path("output/images"),
     skip_images: bool = False,
+    object_type: str = "pokemon"
 ) -> list[Pokemon]:
-    if pokemons:
-        logger.info(
-            "phase 1: fetching %d Pokémon by name (concurrent)...", len(pokemons)
-        )
-        pages = await _collect_from_names(pokemons, concurrency)
-    else:
-        logger.info(
-            "phase 1: collecting pages via pagination (concurrent)..."
-        )
-        pages = await _collect_via_pagination(concurrency)
-        
+    if object_type == "pokemon":
+        if object_list:
+            logger.info(
+                "phase 1: fetching %d Pokémon by name (concurrent)...", len(object_list)
+            )
+            pages = await _collect_from_names(object_list, concurrency, object_type)
+        else:
+            logger.info(
+                    "phase 1: collecting pages via pagination (concurrent)..."
+            )
+            pages = await _collect_via_pagination(concurrency)
+    elif object_type == "trainer":
+        # TODO: add trainer parsing
+        pass
     logger.info("phase 1 complete — %d pages buffered", len(pages))
     logger.info("phase 2: processing concurrently (concurrency=%d)...", concurrency)
     sem = asyncio.Semaphore(concurrency)

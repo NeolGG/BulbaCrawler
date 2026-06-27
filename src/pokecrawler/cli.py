@@ -47,4 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
             "When provided, --start-url and --limit are ignored."
         ),
     )
+    parser.add_argument(
+        "--type",
+        default="pokemon",
+        metavar="TYPE",
+        help="Type of object to parse (e.g., pokemon, move, ability, item). (default: pokemon).",
+    )
     return parser

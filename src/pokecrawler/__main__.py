@@ -18,8 +18,7 @@ def _setup_logging() -> None:
 
 
 async def _main() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
+    args = build_parser().parse_args()
 
     _setup_logging()
 
@@ -31,12 +30,13 @@ async def _main() -> None:
     pokemons = await crawl(
         conn,
         start_url=args.start_url,
-        pokemons=args.pokemon,
+        object_list=args.pokemon,
         limit=args.limit,
         concurrency=args.concurrency,
         json_path=output / "pokemons.json",
         image_dir=output / "images",
         skip_images=args.no_images,
+        object_type=args.type
     )
     elapsed = time.perf_counter() - start
 
