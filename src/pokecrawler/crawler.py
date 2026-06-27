@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sqlite3
+import re
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -20,7 +21,7 @@ from pokecrawler.urls import build_pokemon_url
 logger = logging.getLogger(__name__)
 
 FIRST_POKEMON_URL = f"{BASE_URL}/wiki/Bulbasaur_(Pok%C3%A9mon)"
-
+FIRST_PAGE = f"{BASE_URL}/wiki/Category:Pok%C3%A9mon"
 
 async def _process_one(
     url: str,
@@ -59,31 +60,25 @@ async def _process_one(
         logger.info("saved %s (#%03d)", pokemon.name, pokemon.national_number)
         return pokemon
 
-
 async def _collect_via_pagination(
-    start_url: str, limit: int | None
+    concurrency: int
 ) -> list[tuple[str, str]]:
-    pages: list[tuple[str, str]] = []
-    url: str | None = start_url
+    object_urls= await _get_all_pokemon_urls()
+    sem = asyncio.Semaphore(concurrency)
+    
+    async def fetch_one(object_url: str) -> tuple[str, str] | None:
+        async with sem:
+            logger.info("fetching %s", object_url)
+            try:
+                html = await fetch(object_url)
+            except FetchError as exc:
+                logger.error("skipping %s: %s", object_url, exc)
+                return None
+            return (object_url, html)
 
-    while url is not None:
-        if limit is not None and len(pages) >= limit:
-            break
-
-        logger.info("[%d] fetching %s", len(pages) + 1, url)
-        try:
-            html = await fetch(url)
-        except FetchError as exc:
-            logger.error("fetch failed, stopping crawl: %s", exc)
-            break
-
-        soup = BeautifulSoup(html, "html.parser")
-        next_url = next_pokemon_url(soup)
-        pages.append((url, html))
-        url = next_url
-
-    return pages
-
+    results = await asyncio.gather(*[fetch_one(n) for n in object_urls])
+    ret = [r for r in results if r is not None]
+    return ret
 
 async def _collect_from_names(
     names: list[str], concurrency: int
@@ -104,13 +99,41 @@ async def _collect_from_names(
     results = await asyncio.gather(*[fetch_one(n) for n in names])
     return [r for r in results if r is not None]
 
+def _get_pokemon_on_page(soup: BeautifulSoup) -> tuple[list[str], str | None]:
+    urls = []
+    h2 = soup.find("h2", string=re.compile(r'Pages in category\s+"Pokémon"'))
+    if not h2:
+        return (urls, None)
+    container = h2.find_parent("div")
+    if not container: 
+        return (urls, None)
+    
+    for a in container.find_all("a"):
+        text = a.get_text()
+        href = a.get("href")
+        if text and "(Pokémon)" in text and href:
+            urls.append(BASE_URL + href)
+
+    next_link = soup.find("a", string="next page")
+    next_url = (BASE_URL + next_link.get("href")) if next_link else None
+    return (urls, next_url)
+
+async def _get_all_pokemon_urls() -> list:
+    next_url = FIRST_PAGE
+    urls = []
+    while next_url:
+        html = await fetch(next_url)
+        soup = BeautifulSoup(html, "html.parser")
+        output, next_url = _get_pokemon_on_page(soup)
+        urls += output        
+    return urls
 
 async def crawl(
     conn: sqlite3.Connection,
     *,
-    start_url: str | None = None,
+    start_url: str | None = None, # todo: implement
     pokemons: list[str] | None = None,
-    limit: int | None = None,
+    limit: int | None = None, # todo: implement?
     concurrency: int = 5,
     json_path: Path = Path("output/pokemons.json"),
     image_dir: Path = Path("output/images"),
@@ -122,11 +145,12 @@ async def crawl(
         )
         pages = await _collect_from_names(pokemons, concurrency)
     else:
-        logger.info("phase 1: collecting pages via pagination (sequential)...")
-        pages = await _collect_via_pagination(start_url or FIRST_POKEMON_URL, limit)
-
+        logger.info(
+            "phase 1: collecting pages via pagination (concurrent)..."
+        )
+        pages = await _collect_via_pagination(concurrency)
+        
     logger.info("phase 1 complete — %d pages buffered", len(pages))
-
     logger.info("phase 2: processing concurrently (concurrency=%d)...", concurrency)
     sem = asyncio.Semaphore(concurrency)
 
